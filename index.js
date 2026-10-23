@@ -22,8 +22,8 @@ const portal = new BedrockPortal({
   world: { name: process.env.WORLD_NAME || config.worldName, hostName: 'NamazuSMP',
     ...(process.env.MC_VERSION ? { version: process.env.MC_VERSION } : {}) },
 });
-portal.use(Modules.AutoFriendAccept, { inviteOnAdd: false });
-portal.use(Modules.AutoFriendAdd, { inviteOnAdd: false, checkInterval: 30000 });
+portal.use(Modules.AutoFriendAccept, { inviteOnAdd: true });
+portal.use(Modules.AutoFriendAdd, { inviteOnAdd: true, checkInterval: 30000 });
 portal.on('sessionCreated', () => log(`公開完了: ${ip}:${port} | Botのゲーマータグをフレンド追加して参加してください`));
 portal.on('friendAdded', () => log('フレンドを追加しました'));
 portal.on('playerJoin', () => log('プレイヤーが転送用セッションに参加しました'));
