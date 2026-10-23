@@ -3,6 +3,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
-COPY index.js runner.js config.json ./
+COPY index.js runner.js config.json invites.js control-api.js ./
 ENV DATA_DIR=/data
 CMD ["npm", "start"]
