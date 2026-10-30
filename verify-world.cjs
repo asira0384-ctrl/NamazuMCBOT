@@ -5,6 +5,7 @@ function setup() {
   let time = 0, recovery = 0, calls = [];
   const portal = {
     session: { name: 'session', pmsgId: 'p' },
+    createSessionBody: () => ({ properties: { system: { closed: false }, custom: { protocol: 2225, nonces: { secret: 'concurrent' } } }, members: { me: { properties: { system: { active: true, connection: 'c' } } } } }),
     host: { profile: { xuid: '123' }, connectionId: 'c', rta: { ws: { readyState: 1 } }, rest: {} },
     server: { signaling: { pmsgId: 'p', ws: { readyState: 1 } } },
     getSession: async () => ({ members: { me: { constants: { system: { xuid: '123' } } } } }),
@@ -35,6 +36,17 @@ function setup() {
   const pending = x.health.check(); await Promise.resolve(); await x.health.check(); x.health.stop(); resolve({ members: {} });
   await pending; assert.equal(x.recoveries(), 0); assert.equal(x.calls.length, 0);
   x = setup(); x.portal.getSession = async () => ({ members: { me: { constants: { system: { xuid: '123' } } } }, properties: { system: { closed: true } } });
-  await x.health.check(); assert.deepEqual(x.calls[0], { properties: { system: { closed: false } } });
+  await x.health.check(); assert.equal(x.calls[0].properties.system.closed, false);
+  assert.equal(x.calls[0].properties.custom.protocol, 2225);
+  assert.equal('nonces' in x.calls[0].properties.custom, false);
+  assert.equal(x.calls[0].members.me.properties.system.active, true);
+  x = setup(); await x.health.check(); x.advance(10000); x.health.requestRefresh();
+  x.advance(49000); await x.health.check(); assert.equal(x.calls.length, 3);
+  x.advance(1000); await x.health.check(); assert.equal(x.calls.length, 6);
+  assert.equal(x.recoveries(), 0);
+  x = setup(); x.portal.getSession = async () => { throw Error('429'); };
+  await x.health.check(); x.advance(60000); x.health.requestRefresh(); x.advance(60000);
+  x.portal.getSession = async () => { throw Error('Must still be paused'); };
+  await x.health.check(); assert.equal(x.health.state.failures, 0);
   console.log('PASS: renewal, cadence, socket grace, identity change, missing host/session, throttle, repeated failures, timeout, stop/concurrency, reopening; no invites');
 })();

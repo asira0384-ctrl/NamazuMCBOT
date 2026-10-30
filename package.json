@@ -1,6 +1,6 @@
 {
   "name": "namazu-friend-bot",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -12,10 +12,13 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "bedrock-portal": "2.7.0"
+    "bedrock-portal": "2.8.1"
   },
   "private": true,
   "engines": {
     "node": ">=22"
+  },
+  "overrides": {
+    "bedrock-portal-nethernet": "2.8.0"
   }
 }

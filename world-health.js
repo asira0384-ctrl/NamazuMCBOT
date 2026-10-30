@@ -1,10 +1,10 @@
 'use strict';
-// Checked against bedrock-portal 2.7.0 / bedrock-portal-nethernet 2.7.0.
+// Checked against bedrock-portal 2.8.1 / bedrock-portal-nethernet 2.8.0.
 // Refreshes the existing activity; never sends friend invitations.
 function createWorldHealth(portal, { recover, log = console.log, now = Date.now,
   interval = setInterval, cancel = clearInterval, timeoutMs = 15000 } = {}) {
   const state = { status: 'starting', lastRefresh: null, failures: 0 };
-  let timer, stopped = false, busy = false, downSince = null, nextRefresh = 0;
+  let timer, stopped = false, busy = false, downSince = null, nextRefresh = 0, lastAttempt = -Infinity, rateUntil = 0;
   async function bounded(fn) {
     let timeout;
     try {
@@ -33,9 +33,10 @@ function createWorldHealth(portal, { recover, log = console.log, now = Date.now,
     if (!signal.pmsgId || signal.pmsgId !== portal.session.pmsgId) {
       return restart('NetherNet identity changed; rebuilding published session');
     }
-    if (now() < nextRefresh) return;
+    if (now() < nextRefresh || now() < rateUntil) return;
     busy = true;
     // At most one renewal every two minutes, never an overlapping request.
+    lastAttempt = now();
     nextRefresh = now() + 120000;
     try {
       const session = await bounded(() => portal.getSession());
@@ -43,11 +44,14 @@ function createWorldHealth(portal, { recover, log = console.log, now = Date.now,
       const owner = Object.values(session?.members || {}).find(m =>
         String(m?.constants?.system?.xuid) === String(host.profile?.xuid));
       if (!owner || !host.connectionId) return restart('Published session lost its host');
-      if (session.properties?.system?.closed) {
-        await bounded(() => portal.updateSession({ properties: { system: { closed: false } } }));
-        if (stopped) return;
-      }
-      await bounded(() => host.rest.updateConnection(portal.session.name, host.connectionId));
+      // Republish the joinable world card as well as the activity handle.
+      // Never overwrite nonces while an Xbox join event is updating them.
+      const body = portal.createSessionBody();
+      delete body.properties.custom.nonces;
+      await bounded(() => portal.updateSession({
+        properties: body.properties,
+        members: { me: { properties: body.members.me.properties } },
+      }));
       if (stopped) return;
       await bounded(() => host.rest.setActivity(portal.session.name));
       if (stopped) return;
@@ -63,7 +67,8 @@ function createWorldHealth(portal, { recover, log = console.log, now = Date.now,
       // A throttle is not evidence of an expired session. Do not restart-loop.
       if (/429/.test(message)) {
         const period = Number(message.match(/"periodInSeconds"\s*:\s*(\d+)/)?.[1] || 300);
-        nextRefresh = now() + Math.max(310000, period * 1000 + 10000);
+        rateUntil = now() + Math.max(310000, period * 1000 + 10000);
+        nextRefresh = rateUntil;
         log('[WORLD HEALTH] Rate limited; pausing refresh');
       } else if (/WORLD_REQUEST_TIMEOUT|\b404\b|\b410\b/.test(message)) {
         restart('Session missing or renewal timed out');
@@ -74,12 +79,18 @@ function createWorldHealth(portal, { recover, log = console.log, now = Date.now,
       }
     } finally { busy = false; }
   }
+  // Debounce join/leave notifications; at most one publication per minute.
+  // A player leaving never closes/restarts the host world.
+  function requestRefresh() {
+    if (stopped) return;
+    nextRefresh = Math.min(nextRefresh, Math.max(now() + 5000, lastAttempt + 60000));
+  }
   function start() {
     if (timer || stopped) return;
-    timer = interval(() => { void check(); }, 30000);
+    timer = interval(() => { void check(); }, 15000);
     void check();
   }
   function stop() { stopped = true; if (timer) cancel(timer); timer = null; }
-  return { state, start, stop, check };
+  return { state, start, stop, check, requestRefresh };
 }
 module.exports = { createWorldHealth };

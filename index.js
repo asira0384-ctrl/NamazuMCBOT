@@ -21,7 +21,7 @@ const portal = new BedrockPortal({
     },
   },
   world: { name: process.env.WORLD_NAME || config.worldName, hostName: 'NamazuSMP',
-    ...(process.env.MC_VERSION ? { version: process.env.MC_VERSION } : {}) },
+    version: '1.26.60' },
 });
 const { createInvites } = require('./invites');
 const invites = createInvites(portal);
@@ -44,7 +44,26 @@ portal.on('sessionCreated', () => {
 });
 const { startApi } = require('./control-api');
 const api = startApi(invites);
-portal.on('playerJoin', () => log('PLAYER JOINED redirect session'));
+portal.on('playerJoin', () => { log('XBOX SESSION JOINED (transfer not yet confirmed)'); health.requestRefresh(); });
+portal.on('playerLeave', () => { log('XBOX SESSION LEFT; refreshing world publication'); health.requestRefresh(); });
+// Observe actual game connection stages without logging auth packets or tokens.
+portal.server.on('connect', client => {
+  log('[CLIENT] NetherNet connected');
+  const write = client.write.bind(client);
+  client.write = (name, params) => {
+    try {
+      const result = write(name, params);
+      if (name === 'transfer') log(`[TRANSFER SENT] ${params.server_address}:${params.port} (arrival not confirmed)`);
+      if (name === 'play_status' && String(params.status).startsWith('failed')) log(`[CLIENT REJECTED] ${params.status}`);
+      return result;
+    } catch (e) {
+      log(`[PACKET ERROR] ${name}`);
+      throw e;
+    }
+  };
+  client.on('login', () => log(`[CLIENT LOGIN] protocol=${client.version}`));
+  client.on('close', () => { log('[CLIENT] Disconnected; host remains open'); health.requestRefresh(); });
+});
 let stopping = false;
 async function shutdown(code) {
   if (stopping) return;
