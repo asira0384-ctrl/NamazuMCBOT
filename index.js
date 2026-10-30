@@ -4,9 +4,9 @@ const path = require('node:path');
 const { BedrockPortal, Joinability } = require('bedrock-portal');
 const config = require('./config.json');
 const log = (message) => console.log(`[${new Date().toISOString()}] ${message}`);
-const ip = process.env.SERVER_HOST || config.serverHost;
-const port = Number(process.env.SERVER_PORT || config.serverPort);
-if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('SERVER_PORT must be 1-65535');
+const ip = (process.env.IP || process.env.SERVER_HOST || config.serverHost).trim();
+const port = Number(process.env.PORT || process.env.SERVER_PORT || config.serverPort);
+if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be 1-65535');
 const cache = path.resolve(process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DATA_DIR || './data', 'auth');
 fs.mkdirSync(cache, { recursive: true, mode: 0o700 });
 const portal = new BedrockPortal({

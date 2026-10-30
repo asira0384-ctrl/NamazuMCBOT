@@ -23,7 +23,7 @@ Minecraft側RailwayのVariables:
 MC_API_KEY = 自分で決めた長いランダム文字列（他人に公開しない）
 
 Minecraft側Settings → Networking → Generate Domain。
-Target Portを聞かれた場合はPORT変数の値、未設定なら3000。
+Minecraft BOTの公開ドメインのTarget Portは3000（HTTP_PORTを指定した場合はその値）。PORTは転送先Minecraftサーバー専用。
 発行されたhttps://から始まるURLをコピー。
 
 Discord側RailwayのVariables:

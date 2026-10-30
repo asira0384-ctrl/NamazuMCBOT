@@ -1,7 +1,8 @@
 'use strict';
 const http = require('node:http');
 const { timingSafeEqual } = require('node:crypto');
-function startApi(invites, { key = process.env.MC_API_KEY, port = Number(process.env.PORT || 3000) } = {}) {
+function startApi(invites, { key = process.env.MC_API_KEY, port = Number(process.env.HTTP_PORT || 3000) } = {}) {
+  if (!Number.isInteger(port) || port < 0 || port > 65535) throw Error('HTTP_PORT must be a valid port');
   if (!key) console.warn('[API] MC_API_KEY missing: Discord control disabled');
   const server = http.createServer((req, res) => {
     const reply = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); };
