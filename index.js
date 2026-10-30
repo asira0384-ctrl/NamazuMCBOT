@@ -1,4 +1,5 @@
 'use strict';
+require('./protocol-compat');
 const fs = require('node:fs');
 const path = require('node:path');
 const { BedrockPortal, Joinability } = require('bedrock-portal');
