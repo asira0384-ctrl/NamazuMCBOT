@@ -2,14 +2,37 @@
 // No startup friend-list scan: only newly accepted/added friends get automatic invites.
 function createInvites(portal, { log = console.log, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now } = {}) {
   const state = { ready: false, lastInvite: '', lastError: '', batch: { running: false, total: 0, sent: 0, failed: 0 } };
-  let stopped = false, busy = false, again = false, lastFollowers = 0, backoffUntil = 0, lastBatch = 0;
+  let stopped = false, busy = false, again = false, lastFollowers = 0, backoffUntil = 0, lastBatch = 0, lastSync = -Infinity;
   let timer, listener, sendChain = Promise.resolve();
+  const socialCalls = [];
+  let socialChain = Promise.resolve();
+  // One shared budget for all friendship reads/writes, including manual batches.
+  function social(method, ...args) {
+    const task = socialChain.then(async () => {
+      while (!stopped) {
+        const time = now();
+        while (socialCalls.length && socialCalls[0] <= time - 310000) socialCalls.shift();
+        const wait = Math.max(backoffUntil - time, socialCalls.length >= 20 ? socialCalls[0] + 310000 - time : 0);
+        if (wait > 0) { await sleep(Math.min(wait, 1000)); continue; }
+        socialCalls.push(time);
+        try { return await portal.host.rest[method](...args); }
+        catch (e) { if (/429/.test(String(e?.message))) pauseForRateLimit(e); throw e; }
+      }
+      throw Error('BOT stopped');
+    });
+    socialChain = task.catch(() => {});
+    return task;
+  }
+  function pauseForRateLimit(e) {
+    const period = Number(String(e?.message || e).match(/"periodInSeconds"\s*:\s*(\d+)/)?.[1] || 300);
+    backoffUntil = Math.max(backoffUntil, now() + Math.max(310000, period * 1000 + 10000));
+  }
   const autoPending = new Set();
   const recentlyAccepted = new Map();
   function error(label, e) {
     const message = String(e?.message || e).replace(/XBL3\.0\s+\S+/g, '[REDACTED]').slice(0, 500);
     state.lastError = label + ': ' + message; log('[MC ERROR] ' + state.lastError);
-    if (/429/.test(message)) backoffUntil = now() + 60000;
+    if (/429/.test(message)) pauseForRateLimit(e);
   }
   function send(xuid, name, reason) {
     const run = sendChain.then(async () => {
@@ -44,23 +67,24 @@ function createInvites(portal, { log = console.log, sleep = ms => new Promise(r 
   async function sync() {
     if (stopped || !state.ready || now() < backoffUntil) return;
     if (busy) { again = true; return; }
+    if (now() - lastSync < 20000) return;
+    lastSync = now();
     busy = true;
     try {
-      const rest = portal.host.rest;
-      const requests = await rest.getFriendRequestsReceived();
+      const requests = await social('getFriendRequestsReceived');
       if (requests.length) {
-        const accepted = await rest.acceptFriendRequests(requests.map(p => p.xuid));
+        const accepted = await social('acceptFriendRequests', requests.map(p => p.xuid));
         const ids = new Set((accepted.updatedPeople || []).map(String));
         for (const p of requests) if (ids.has(String(p.xuid))) onAccepted(p);
       }
-      if (now() - lastFollowers >= 15000) {
+      if (now() - lastFollowers >= 90000) {
         lastFollowers = now();
-        const followers = await rest.getXboxFollowers();
+        const followers = await social('getXboxFollowers');
         for (const p of followers.filter(p => !p.isFollowedByCaller)) {
           if (stopped || now() < backoffUntil) break;
           // Avoid treating a just-accepted request as another follower addition.
           if (autoPending.has(String(p.xuid))) continue;
-          await rest.addXboxFriend(p.xuid); onAccepted(p);
+          await social('addXboxFriend', p.xuid); onAccepted(p);
         }
       }
     } catch(e) { error('friend sync', e); }
@@ -68,7 +92,7 @@ function createInvites(portal, { log = console.log, sleep = ms => new Promise(r 
   }
   async function runBatch() {
     try {
-      const friends = await portal.host.rest.getXboxFriends();
+      const friends = await social('getXboxFriends');
       const unique = [...new Map(friends.map(p => [String(p.xuid), p])).values()];
       state.batch.total = unique.length;
       for (const p of unique) {
@@ -94,7 +118,7 @@ function createInvites(portal, { log = console.log, sleep = ms => new Promise(r 
     host.rta.on('event', listener);
     try { await host.rta.subscribe(`https://social.xboxlive.com/users/xuid(${host.profile.xuid})/friends`); }
     catch(e) { error('friend events (polling remains active)', e); }
-    await sync(); timer = setInterval(() => { void sync(); }, 5000);
+    await sync(); timer = setInterval(() => { void sync(); }, 45000);
   }
   function stop() { stopped = true; state.ready = false; clearInterval(timer); if (listener) portal.host.rta?.removeListener('event', listener); }
   return { state, start, stop, sync, inviteAll, onAccepted, drained: () => sendChain };

@@ -12,7 +12,7 @@ const { startApi } = require('./control-api');
  }},invitePlayer:async id=>{if(fail)throw Error('403 test');sent.push(id)}};
  const engine=createInvites(portal,{sleep:async()=>{},log:()=>{},now:()=>time});
  await engine.start();assert.deepEqual(sent,[],'startup must not invite existing friends');
- requests=[{xuid:'222',gamertag:'new'}];await engine.sync();await engine.drained();
+ time+=20000;requests=[{xuid:'222',gamertag:'new'}];await engine.sync();await engine.drained();
  assert.deepEqual(sent,['222'],'invite accepted XUID without waiting for friends-list propagation');
  engine.onAccepted({xuid:'222'});await engine.drained();assert.equal(sent.length,1);
  fail=true;time+=61000;engine.onAccepted({xuid:'333'});await new Promise(r=>setImmediate(r));await engine.drained();assert.match(engine.state.lastError,/403/);
