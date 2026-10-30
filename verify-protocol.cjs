@@ -12,6 +12,11 @@ function roundtrip(name, params) {
   const buffer = serializer.createPacketBuffer({name, params});
   const decoded = parser.parsePacketBuffer(buffer);
   assert.equal(decoded.data.name, name);
+  if (name === 'start_game') {
+    assert.deepEqual(params.block_pallette_checksum, [0, 0]);
+    const checksum = decoded.data.params.block_pallette_checksum;
+    assert.equal(BigInt(checksum.toString()), 0n);
+  }
   assert.deepEqual(serializer.createPacketBuffer(decoded.data), buffer);
   packets++;
 }

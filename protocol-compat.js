@@ -48,3 +48,11 @@ SizeOf.optionalOnRemaining ??= ['parametrizable', (c, { type }) => c.wrapCode(`
   return ${c.callType('value', type)}
 `)];
 module.exports = { netherRequire };
+
+// The redirect lobby has no custom block palette. A copied nonzero checksum
+// falsely claims a specific vanilla palette and can trigger the Boat error.
+// Zero tells Bedrock not to compare a server-supplied block state checksum.
+// Reference: Sandertv/gophertunnel minecraft/protocol/packet/start_game.go,
+// ServerBlockStateChecksum documentation.
+const { start_game } = portalRequire('./common/start_game');
+start_game.block_pallette_checksum = [0, 0];
