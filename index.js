@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const { BedrockPortal, Joinability, Modules } = require('bedrock-portal');
+const { BedrockPortal, Joinability } = require('bedrock-portal');
 const config = require('./config.json');
 const log = (message) => console.log(`[${new Date().toISOString()}] ${message}`);
 const ip = process.env.SERVER_HOST || config.serverHost;
@@ -11,6 +11,7 @@ const cache = path.resolve(process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.
 fs.mkdirSync(cache, { recursive: true, mode: 0o700 });
 const portal = new BedrockPortal({
   ip, port,
+  updatePresence: false, // world-health owns presence refresh and recovery
   joinability: Joinability.FriendsOnly,
   host: {
     username: 'namazu-friend-bot', cache,
@@ -24,8 +25,21 @@ const portal = new BedrockPortal({
 });
 const { createInvites } = require('./invites');
 const invites = createInvites(portal);
+const { createWorldHealth } = require('./world-health');
+const health = createWorldHealth(portal, { recover: () => shutdown(1), log });
+invites.state.world = health.state;
+// Upstream end(true) reuses an unclosed NetherNet server. Recreate the process
+// instead, so sockets, listeners and friendship loops cannot accumulate.
+const endPortal = portal.end.bind(portal);
+portal.end = (resume = false) => resume ? shutdown(1) : endPortal(false);
+let heartbeat;
+
 portal.on('sessionCreated', () => {
   log(`READY: ${ip}:${port}; automatic invites only after new friend acceptance`);
+  health.start();
+  process.send?.({ type: 'ready' });
+  heartbeat = setInterval(() => process.send?.({ type: 'heartbeat' }), 10000);
+  log(`TRANSPORT: NetherNet; game=${portal.server.options.version}; protocol=${portal.server.options.protocolVersion}`);
   invites.start().catch(e => console.error('[FRIEND START ERROR]', e.message));
 });
 const { startApi } = require('./control-api');
@@ -35,6 +49,8 @@ let stopping = false;
 async function shutdown(code) {
   if (stopping) return;
   stopping = true;
+  health.stop();
+  clearInterval(heartbeat);
   invites.stop();
   api.close();
   const timer = setTimeout(() => process.exit(code), 5000);
